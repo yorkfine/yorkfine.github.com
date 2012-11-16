@@ -1,0 +1,12 @@
+---
+comments: true
+date: 2012-03-21 17:12:45
+layout: post
+slug: abc
+title: abc
+wordpress_id: 27
+categories:
+- 未分类
+---
+
+adfaa

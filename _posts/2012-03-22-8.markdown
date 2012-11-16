@@ -1,0 +1,242 @@
+---
+comments: true
+date: 2012-03-22 01:20:46
+layout: post
+slug: '8'
+title: 测试
+wordpress_id: 8
+categories:
+- ACG
+tags:
+- aa
+---
+
+{% highlight java %}
+package com.echom;
+
+import java.awt.*;
+import java.awt.event.*;
+import java.io.File;
+
+import javax.swing.*;
+import javax.swing.border.EmptyBorder;
+
+public class VrmlCommentGUI extends JFrame {
+protected static String vrmlFile = null;
+private static String downloadPath;
+private static String uploadPath;
+private static boolean bSuccess;
+
+private JSplitPane mainSplitPanel;
+// 创建一条水平进度条
+JProgressBar bar = new JProgressBar(JProgressBar.HORIZONTAL);
+
+public VrmlCommentGUI(String vrmlFile) {
+// 滚动面板，放入分割面板，暂时不用
+//JScrollPane
+//showScrollPanel = new JScrollPane(new VrmlShowPanel(vrmlFile)),
+//commentScrollPanel = new JScrollPane(new VrmlCommentPanel());
+
+// 分割面板
+VrmlCommentPanel vrmlCommentPanel = new VrmlCommentPanel();
+Context.getInstance().setVrmlCommentPanel(vrmlCommentPanel);
+// 由于VrmlShowPanel里的PickHighlightBehavior要引用到VrmlCommentPanel,故在new前要先在Context里保存好对象
+VrmlShowPanel vrmlShowPanel = new VrmlShowPanel(vrmlFile);
+Context.getInstance().setVrmlShowPanel(vrmlShowPanel);
+
+mainSplitPanel = new JSplitPane(JSplitPane.VERTICAL_SPLIT, vrmlShowPanel, vrmlCommentPanel);
+
+// 主面板
+JPanel mainPanel = new JPanel() ;
+mainPanel.setLayout(new BorderLayout());
+mainPanel.setBorder(new EmptyBorder(10, 10, 10, 10)); //设置空边框
+mainPanel.add(mainSplitPanel);
+
+// 放入主Frame里
+this.setContentPane(mainPanel);
+}
+
+public void init() {
+// 一定要在主窗体setVisible(true)之后再使用setDividerLocation(double)才会有效
+mainSplitPanel.setDividerLocation(0.8);
+this.addComponentListener(new ComponentAdapter(){
+public void componentResized(ComponentEvent e) {
+mainSplitPanel.setDividerLocation(0.8);
+}
+});
+}
+
+/**
+* 加载Vrml文档
+*/
+public void load() {
+// 使用modal对话框，在对话框未关闭（即下载进程未结束）时主窗口不会显示
+final JDialog downloadDiag = new JDialog(this, true);
+// 把进度条添加到JFrame窗口中
+//frame.add(bar);
+downloadDiag.add(bar);
+// 设置在进度条中绘制完成百分比
+bar.setStringPainted(true);
+
+//以启动一条线程的方式来执行一个vrml文档与标注的下载任务
+Thread vrmlDownloadThread = new Thread() {
+public void run() {
+final VrmlDownloader vd = new VrmlDownloader();
+Timer timer;
+
+if (!vd.connect(downloadPath)) {
+JOptionPane.showMessageDialog(null, vrmlFile + "vrml文件不存在",
+"错误", JOptionPane.ERROR_MESSAGE);
+downloadDiag.dispose();
+return;
+}
+
+bar.setMinimum(0);
+bar.setMaximum(vd.getTotal());
+downloadDiag.setTitle("Vrml文档加载进度");
+
+// 定时更新进度条
+timer = new Timer(300, new ActionListener() {
+public void actionPerformed(ActionEvent e) {
+// 以任务的当前完成量设置进度条的value
+bar.setValue(vd.getCurrent());
+}
+});
+timer.start();
+
+if (!vd.vrmlDownload("./")) {
+JOptionPane.showMessageDialog(null,
+vrmlFile + "vrml文件加载失败", "错误",
+JOptionPane.ERROR_MESSAGE);
+downloadDiag.dispose();
+return;
+}
+
+timer.stop();
+timer = null;
+
+// 判断vrml文件是否存在，不存在则程序退出
+if (!new File(vrmlFile).exists()) {
+JOptionPane.showMessageDialog(null, vrmlFile+"文件不存在", "错误", JOptionPane.ERROR_MESSAGE);
+downloadDiag.dispose();
+return;
+}
+
+// 下载标注文件
+downloadPath = downloadPath + ".comment";
+String commentFile = vrmlFile + ".comment";
+if (!vd.connect(downloadPath)) {
+Comment.createDoc(); // 标注文件不存则新建
+bSuccess = true;
+downloadDiag.dispose();
+return;
+}
+
+bar.setMinimum(0);
+bar.setMaximum(vd.getTotal());
+downloadDiag.setTitle("标注文件加载进度");
+
+// 定时更新进度条
+timer = new Timer(300, new ActionListener() {
+public void actionPerformed(ActionEvent e) {
+// 以任务的当前完成量设置进度条的value
+bar.setValue(vd.getCurrent());
+}
+});
+timer.start();
+
+if (vd.commentDownload("./") == VrmlDownloader.DOWNLOAD_ERROR) {
+JOptionPane.showMessageDialog(null, vrmlFile + "标注文件加载失败",
+"错误", JOptionPane.ERROR_MESSAGE);
+downloadDiag.dispose();
+return;
+} else {
+Comment.readDoc(commentFile);
+}
+
+timer.stop();
+timer = null;
+downloadDiag.dispose();
+bSuccess = true; // 加载全部成功
+}
+};
+vrmlDownloadThread.start();
+
+downloadDiag.setSize(200,50);
+downloadDiag.setVisible(true);
+}
+
+/**
+*
+* @param args args[0]存放下载文件路径
+* args[1]存放上传标注文件路径
+*/
+public static void main(String[] args) {
+// 改成系统风格
+try {
+javax.swing.UIManager.setLookAndFeel(javax.swing.UIManager.getSystemLookAndFeelClassName());
+
+} catch (Exception e) {
+e.printStackTrace();
+}
+
+downloadPath = args[0];
+uploadPath = args[1];
+bSuccess = false;
+
+// 取得vrml文件名，标注文件根据vrml文件得到
+String[] names = args[0].split("/");
+vrmlFile = names[names.length-1];
+
+SwingUtilities.invokeLater(new Runnable() {
+
+@Override
+public void run() {
+final VrmlCommentGUI vrmlCommentGUI = new VrmlCommentGUI(VrmlCommentGUI.vrmlFile);
+//vrmlCommentGUI.setDefaultCloseOperation(JFrame.EXIT_ON_CLOSE);
+// 关闭前要确认上传是否成功而询问用户是否就此关闭
+vrmlCommentGUI.setDefaultCloseOperation(WindowConstants.DO_NOTHING_ON_CLOSE);
+vrmlCommentGUI.addWindowListener(new WindowAdapter() {
+public void windowClosing(java.awt.event.WindowEvent evt) {
+// 关闭前把comment上传
+if (Comment.submit()) {
+System.exit(0);
+} else {
+if (JOptionPane.OK_OPTION == JOptionPane.showConfirmDialog(vrmlCommentGUI, vrmlFile + "上传标注文件失败, 是否还要关闭")) {
+System.exit(0);
+} else {
+return;
+}
+}
+}
+});
+vrmlCommentGUI.setSize(700, 700);
+vrmlCommentGUI.setTitle("VrmlComment CopyRights@chenxuhui");
+vrmlCommentGUI.setVisible(false);
+vrmlCommentGUI.load();
+
+// 关闭根据情况是关闭程序或是显示VrmlGUI
+if (!bSuccess) {
+System.exit(ERROR);
+}
+
+vrmlCommentGUI.setVisible(true);
+vrmlCommentGUI.init();
+Comment.uploadURL = uploadPath;
+Context.getInstance().getVrmlShowPanel().show(); // 显示加载的vrml图形
+
+}
+});
+}
+}
+{% endhighlight %}
+
+这只是测试一下代码高亮插件
+
+
+
+插入图片测试
+
+[![喵](http://www.asahui.info/blog/wp-content/uploads/2012/03/Konachan.com-129793-2girls-black_hair-blush-catgirl-cleavage-gloves-long_hair-mauve-original-panties-tail-thighhighs-twintails-underwear-white_hair-yellow_eyes-300x210.jpg)](http://www.asahui.info/blog/wp-content/uploads/2012/03/Konachan.com-129793-2girls-black_hair-blush-catgirl-cleavage-gloves-long_hair-mauve-original-panties-tail-thighhighs-twintails-underwear-white_hair-yellow_eyes.jpg)
+
+mod
